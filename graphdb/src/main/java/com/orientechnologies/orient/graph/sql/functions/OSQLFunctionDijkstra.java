@@ -19,6 +19,7 @@
  */
 package com.orientechnologies.orient.graph.sql.functions;
 
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
 
@@ -34,8 +35,19 @@ import com.orientechnologies.orient.core.sql.OSQLHelper;
 import com.orientechnologies.orient.graph.sql.OGraphCommandExecutorSQLFactory;
 import com.tinkerpop.blueprints.Direction;
 import com.tinkerpop.blueprints.Edge;
+import com.tinkerpop.blueprints.Vertex;
 import com.tinkerpop.blueprints.impls.orient.OrientBaseGraph;
 import com.tinkerpop.blueprints.impls.orient.OrientVertex;
+import es.usc.citius.hipster.algorithm.AStar;
+import es.usc.citius.hipster.algorithm.Hipster;
+import es.usc.citius.hipster.model.Transition;
+import es.usc.citius.hipster.model.function.CostFunction;
+import es.usc.citius.hipster.model.function.TransitionFunction;
+import es.usc.citius.hipster.model.impl.WeightedNode;
+import es.usc.citius.hipster.model.problem.ProblemBuilder;
+import es.usc.citius.hipster.model.problem.SearchProblem;
+import es.usc.citius.hipster.util.F;
+import es.usc.citius.hipster.util.Function;
 
 /**
  * Dijkstra's algorithm describes how to find the cheapest path from one node to another node in a directed weighted graph.
@@ -86,7 +98,61 @@ public class OSQLFunctionDijkstra extends OSQLFunctionPathFinder {
       if (iParams.length > 3)
         paramDirection = Direction.valueOf(iParams[3].toString().toUpperCase());
 
-      return super.execute(iContext);
+      context = iContext;
+
+      // Statistics from OSQLFunctionPathFinder
+      int maxDistances = 0;
+      int maxSettled = 0;
+      int maxUnSettled = 0;
+      int maxPredecessors = 0;
+
+      // Create a hipster search problem description
+      SearchProblem<Void, OrientVertex, WeightedNode<Void, OrientVertex, Double>> p =
+              ProblemBuilder.create()
+              .initialState(paramSourceVertex)
+              .defineProblemWithoutActions()
+              .useTransitionFunction(new TransitionFunction<Void, OrientVertex>() {
+                @Override
+                public Iterable<Transition<Void, OrientVertex>> transitionsFrom(final OrientVertex source) {
+                  return F.map(source.getVertices(paramDirection), new Function<Vertex, Transition<Void, OrientVertex>>() {
+                    @Override
+                    public Transition<Void, OrientVertex> apply(Vertex dest) {
+                      context.incrementVariable("getNeighbors");
+                      return Transition.create(source,(OrientVertex)dest);
+                    }
+                  });
+                }
+              })
+              .useCostFunction(new CostFunction<Void, OrientVertex, Double>() {
+                @Override
+                public Double evaluate(Transition<Void, OrientVertex> transition) {
+                  return (double) getDistance(transition.getFromState(), transition.getState());
+                }
+              }).build();
+
+      WeightedNode<Void, OrientVertex, Double> lastNode = null;
+      AStar<Void, OrientVertex, Double, WeightedNode<Void, OrientVertex, Double>> it = Hipster.createDijkstra(p);
+      for(WeightedNode<Void, OrientVertex, Double> node : it){
+        lastNode = node;
+        if (node.state().equals(paramDestinationVertex)) break;
+
+        // Keep original OrientDB statistics
+        // TODO: maxDistances?
+        if (it.iterator().getClosed().size() > maxSettled ) maxSettled = it.iterator().getClosed().size();
+        if (it.iterator().getOpen().size() > maxUnSettled ) maxUnSettled = it.iterator().getOpen().size();
+
+        if (!context.checkTimeout()) break;
+      }
+
+      LinkedList<OrientVertex> path = new LinkedList<OrientVertex>();
+      if (lastNode != null) {
+        for(WeightedNode<Void, OrientVertex, Double> v : lastNode.path()){
+          path.add(v.state());
+        }
+      }
+
+      return path;
+
     } finally {
       if (shutdownFlag.getValue())
         graph.shutdown(false);

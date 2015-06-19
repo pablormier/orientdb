@@ -111,6 +111,13 @@
             <artifactId>gremlin-groovy</artifactId>
             <version>${blueprints.version}</version>
         </dependency>
+
+        <dependency>
+            <groupId>es.usc.citius.hipster</groupId>
+            <artifactId>hipster-core</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
+
     </dependencies>
     <build>
         <plugins>
