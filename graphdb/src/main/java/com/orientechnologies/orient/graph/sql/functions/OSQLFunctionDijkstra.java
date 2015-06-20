@@ -42,7 +42,7 @@ import es.usc.citius.hipster.algorithm.AStar;
 import es.usc.citius.hipster.algorithm.Hipster;
 import es.usc.citius.hipster.model.Transition;
 import es.usc.citius.hipster.model.function.CostFunction;
-import es.usc.citius.hipster.model.function.TransitionFunction;
+import es.usc.citius.hipster.model.function.impl.StateTransitionFunction;
 import es.usc.citius.hipster.model.impl.WeightedNode;
 import es.usc.citius.hipster.model.problem.ProblemBuilder;
 import es.usc.citius.hipster.model.problem.SearchProblem;
@@ -109,24 +109,23 @@ public class OSQLFunctionDijkstra extends OSQLFunctionPathFinder {
       // Create a hipster search problem description
       SearchProblem<Void, OrientVertex, WeightedNode<Void, OrientVertex, Double>> p =
               ProblemBuilder.create()
-              .initialState(paramSourceVertex)
-              .defineProblemWithoutActions()
-              .useTransitionFunction(new TransitionFunction<Void, OrientVertex>() {
-                @Override
-                public Iterable<Transition<Void, OrientVertex>> transitionsFrom(final OrientVertex source) {
-                  return F.map(source.getVertices(paramDirection), new Function<Vertex, Transition<Void, OrientVertex>>() {
-                    @Override
-                    public Transition<Void, OrientVertex> apply(Vertex dest) {
-                      context.incrementVariable("getNeighbors");
-                      return Transition.create(source,(OrientVertex)dest);
-                    }
-                  });
-                }
-              })
-              .useCostFunction(new CostFunction<Void, OrientVertex, Double>() {
+                      .initialState(paramSourceVertex)
+                      .defineProblemWithoutActions()
+                      .useTransitionFunction(new StateTransitionFunction<OrientVertex>() {
+                        @Override
+                        public Iterable<OrientVertex> successorsOf(OrientVertex v) {
+                          return F.map(v.getVertices(Direction.OUT), new Function<Vertex, OrientVertex>() {
+                            @Override
+                            public OrientVertex apply(Vertex vertex) {
+                              context.incrementVariable("getNeighbors");
+                              return (OrientVertex)vertex;
+                            }
+                          });
+                        }
+                      }).useCostFunction(new CostFunction<Void, OrientVertex, Double>() {
                 @Override
                 public Double evaluate(Transition<Void, OrientVertex> transition) {
-                  return (double) getDistance(transition.getFromState(), transition.getState());
+                  return (double)getDistance(transition.getFromState(), transition.getState());
                 }
               }).build();
 
